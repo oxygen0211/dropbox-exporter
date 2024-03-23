@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: dropbox-exporter
+dropbox:
+  source: <path to download from>
+  destination: <path to download to>
+  accesstoken: <your Dropbox Access Token generated through Apps dashboard>
+  identifier: <the Identifier you set in Apps dashboard>
+  download:
+    threads: 20
