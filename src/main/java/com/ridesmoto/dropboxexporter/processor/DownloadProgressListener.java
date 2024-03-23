@@ -6,8 +6,8 @@ import org.slf4j.LoggerFactory;
 
 public class DownloadProgressListener implements IOUtil.ProgressListener {
     private static final Logger LOG = LoggerFactory.getLogger(DownloadTask.class);
-    private long fileSize;
-    private String path;
+    private final long fileSize;
+    private final String path;
 
     private int lastPercentage = 0;
 

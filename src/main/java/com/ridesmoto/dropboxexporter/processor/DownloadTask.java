@@ -1,7 +1,6 @@
 package com.ridesmoto.dropboxexporter.processor;
 
 import com.dropbox.core.DbxDownloader;
-import com.dropbox.core.util.IOUtil;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.files.FileMetadata;
 import org.slf4j.Logger;
@@ -15,7 +14,7 @@ public class DownloadTask implements Runnable{
     private final String path;
     private final String destinationPath;
     private final DbxClientV2 dropbox;
-    private FileMetadata metadata;
+    private final FileMetadata metadata;
 
     public DownloadTask(FileMetadata metadata, String path, String destinationPath, DbxClientV2 dropbox) {
         this.metadata = metadata;
