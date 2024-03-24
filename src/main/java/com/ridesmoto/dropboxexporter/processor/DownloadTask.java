@@ -1,16 +1,21 @@
 package com.ridesmoto.dropboxexporter.processor;
 
 import com.dropbox.core.DbxDownloader;
+import com.dropbox.core.DbxException;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.files.FileMetadata;
+import io.micrometer.core.instrument.Metrics;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 
 public class DownloadTask implements Runnable{
     private static final Logger LOG = LoggerFactory.getLogger(DownloadTask.class);
+    private static final String DOWNLOAD_TIMER_NAME = "dropbox_file_download_duration";
     private final String path;
     private final String destinationPath;
     private final DbxClientV2 dropbox;
@@ -26,26 +31,38 @@ public class DownloadTask implements Runnable{
     @Override
     public void run() {
         LOG.info("Downloading {} to {}", path, destinationPath);
+        Timer timer = Metrics.globalRegistry.timer(DOWNLOAD_TIMER_NAME, "path", path);
         try {
-            try (DbxDownloader<FileMetadata> downloader = dropbox.files().download(path)){
-                File destinationFile = new File(destinationPath);
-
-                if(!destinationFile.getParentFile().exists()) {
-                    destinationFile.getParentFile().mkdirs();
+            timer.record(() -> {
+                try {
+                    load();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
                 }
-
-                if(!destinationFile.exists()) {
-                    destinationFile.createNewFile();
-                }
-
-                FileOutputStream out = new FileOutputStream(destinationFile);
-                downloader.download(out, new DownloadProgressListener(path, metadata.getSize()));
-            }
-
-            LOG.info("Downloaded {}", path);
+            });
         }
         catch (Exception e) {
             LOG.error("Error downloading {}", path, e);
         }
+    }
+
+    private void load() throws DbxException, IOException {
+        Metrics.globalRegistry.timer(DOWNLOAD_TIMER_NAME);
+        try (DbxDownloader<FileMetadata> downloader = dropbox.files().download(path)){
+            File destinationFile = new File(destinationPath);
+
+            if(!destinationFile.getParentFile().exists()) {
+                destinationFile.getParentFile().mkdirs();
+            }
+
+            if(!destinationFile.exists()) {
+                destinationFile.createNewFile();
+            }
+
+            FileOutputStream out = new FileOutputStream(destinationFile);
+            downloader.download(out, new DownloadProgressListener(path, metadata.getSize()));
+        }
+
+        LOG.info("Downloaded {}", path);
     }
 }

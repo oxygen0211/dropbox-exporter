@@ -8,3 +8,10 @@ dropbox:
   identifier: <the Identifier you set in Apps dashboard>
   download:
     threads: 20
+
+management:
+  endpoints:
+    enabled-by-default: true
+    web:
+      exposure:
+        include: prometheus,health,info,metric

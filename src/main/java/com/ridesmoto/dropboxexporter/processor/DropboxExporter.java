@@ -7,6 +7,7 @@ import com.dropbox.core.v2.files.FileMetadata;
 import com.dropbox.core.v2.files.FolderMetadata;
 import com.dropbox.core.v2.files.ListFolderResult;
 import com.dropbox.core.v2.files.Metadata;
+import io.micrometer.core.instrument.Metrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,6 +26,8 @@ import java.util.concurrent.Future;
 @Service
 public class DropboxExporter {
     private static final Logger LOG = LoggerFactory.getLogger(DropboxExporter.class);
+    private static final String FILES_GAUGE_NAME = "dropbox_files_to_load";
+    private static final String LOADED_GAUGE_NAME = "dropbox_files_loaded";
 
     @Value("${dropbox.source}")
     private String sourceDir;
@@ -47,6 +50,7 @@ public class DropboxExporter {
 
         List<FileMetadata> downloadableFiles = listFilesInDir(sourceDir);
 
+        Metrics.globalRegistry.gauge(FILES_GAUGE_NAME, downloadableFiles.size());
         LOG.info("Found {} downloadable files in {}", downloadableFiles.size(), sourceDir);
 
         List<Future> downloadFutures = new ArrayList<>(downloadableFiles.size());
@@ -58,6 +62,7 @@ public class DropboxExporter {
         while(!finished) {
             List<Future> downloadedFiles  = downloadFutures.stream().filter(Future::isDone).toList();
             LOG.info("{}/{} Files Downloaded", downloadedFiles.size(), downloadFutures.size());
+            Metrics.globalRegistry.gauge(LOADED_GAUGE_NAME, downloadedFiles.size());
             finished = downloadedFiles.size() >= downloadFutures.size();
 
             Thread.sleep(5000);
