@@ -2,6 +2,7 @@ package com.ridesmoto.dropboxexporter.processor;
 
 import com.dropbox.core.DbxDownloader;
 import com.dropbox.core.DbxException;
+import com.dropbox.core.InvalidAccessTokenException;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.files.FileMetadata;
 import io.micrometer.core.instrument.Metrics;
@@ -60,7 +61,15 @@ public class DownloadTask implements Runnable{
             }
 
             FileOutputStream out = new FileOutputStream(destinationFile);
-            downloader.download(out, new DownloadProgressListener(path, metadata.getSize()));
+            try {
+                downloader.download(out, new DownloadProgressListener(path, metadata.getSize()));
+            }
+            catch (InvalidAccessTokenException e) {
+                LOG.info("Got invalid token, refreshing and retrying download...");
+                dropbox.refreshAccessToken();
+                load();
+            }
+
         }
 
         LOG.info("Downloaded {}", path);
