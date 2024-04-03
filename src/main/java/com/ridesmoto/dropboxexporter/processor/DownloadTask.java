@@ -59,6 +59,10 @@ public class DownloadTask implements Runnable{
             if(!destinationFile.exists()) {
                 destinationFile.createNewFile();
             }
+            else if(metadata.getSize() == destinationFile.length()) {
+                LOG.info("{} already seems to be downloaded to {}. Skipping", path, destinationPath);
+                return;
+            }
 
             FileOutputStream out = new FileOutputStream(destinationFile);
             try {
