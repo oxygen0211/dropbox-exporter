@@ -31,7 +31,6 @@ public class DownloadTask implements Runnable{
 
     @Override
     public void run() {
-        LOG.info("Downloading {} to {}", path, destinationPath);
         Timer timer = Metrics.globalRegistry.timer(DOWNLOAD_TIMER_NAME, "path", path);
         try {
             timer.record(() -> {
@@ -66,6 +65,7 @@ public class DownloadTask implements Runnable{
 
             FileOutputStream out = new FileOutputStream(destinationFile);
             try {
+                LOG.info("Downloading {} to {}", path, destinationPath);
                 downloader.download(out, new DownloadProgressListener(path, metadata.getSize()));
             }
             catch (InvalidAccessTokenException e) {
