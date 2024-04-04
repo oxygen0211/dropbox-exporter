@@ -39,7 +39,7 @@ public class DropboxExporter {
     private final DbxClientV2 dropbox;
     private final ExecutorService downloadExecutor;
 
-    public DropboxExporter( @Value("${dropbox.identifier}") String identifier, @Value("${dropbox.accesstoken}") String accesstoken, @Value("${dropbox.download.threads}") int threads) {
+    public DropboxExporter(@Value("${dropbox.identifier}") String identifier, @Value("${dropbox.accesstoken}") String accesstoken, @Value("${dropbox.download.threads}") int threads) {
         DbxRequestConfig config = DbxRequestConfig.newBuilder(identifier).build();
         dropbox = new DbxClientV2(config, accesstoken);
         downloadExecutor = Executors.newFixedThreadPool(threads);
@@ -47,36 +47,45 @@ public class DropboxExporter {
 
     @EventListener(ApplicationReadyEvent.class)
     public void exportFromConfig() throws DbxException, IOException, InterruptedException, ExecutionException {
-        String username = "anonymous";
-        try {
-            username = dropbox.users().getCurrentAccount().getName().getDisplayName();
-        }
-        catch(InvalidAccessTokenException e) {
-            LOG.info("Access token has expired. Try refreshing and then fetch username again...");
-            dropbox.refreshAccessToken();
-            username = dropbox.users().getCurrentAccount().getName().getDisplayName();
-        }
-        LOG.info("Exporting directory {} of account {} to {} as specified in application config...", sourceDir, username, destDir);
 
-        List<FileMetadata> downloadableFiles = listFilesInDir(sourceDir);
+        downloadExecutor.submit(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String username = "anonymous";
+                    try {
+                        username = dropbox.users().getCurrentAccount().getName().getDisplayName();
+                    } catch (InvalidAccessTokenException e) {
+                        LOG.info("Access token has expired. Try refreshing and then fetch username again...");
+                        dropbox.refreshAccessToken();
+                        username = dropbox.users().getCurrentAccount().getName().getDisplayName();
+                    }
+                    LOG.info("Exporting directory {} of account {} to {} as specified in application config...", sourceDir, username, destDir);
 
-        Metrics.globalRegistry.gauge(FILES_GAUGE_NAME, downloadableFiles.size());
-        LOG.info("Found {} downloadable files in {}", downloadableFiles.size(), sourceDir);
+                    List<FileMetadata> downloadableFiles = listFilesInDir(sourceDir);
 
-        List<Future> downloadFutures = new ArrayList<>(downloadableFiles.size());
-        for(FileMetadata meta : downloadableFiles) {
-            downloadFutures.add(downloadFile(meta));
-        }
+                    Metrics.globalRegistry.gauge(FILES_GAUGE_NAME, downloadableFiles.size());
+                    LOG.info("Found {} downloadable files in {}", downloadableFiles.size(), sourceDir);
 
-        boolean finished = false;
-        while(!finished) {
-            List<Future> downloadedFiles  = downloadFutures.stream().filter(Future::isDone).toList();
-            LOG.info("{}/{} Files Downloaded", downloadedFiles.size(), downloadFutures.size());
-            Metrics.globalRegistry.gauge(LOADED_GAUGE_NAME, downloadedFiles.size());
-            finished = downloadedFiles.size() >= downloadFutures.size();
+                    List<Future> downloadFutures = new ArrayList<>(downloadableFiles.size());
+                    for (FileMetadata meta : downloadableFiles) {
+                        downloadFutures.add(downloadFile(meta));
+                    }
 
-            Thread.sleep(5000);
-        }
+                    boolean finished = false;
+                    while (!finished) {
+                        List<Future> downloadedFiles = downloadFutures.stream().filter(Future::isDone).toList();
+                        LOG.info("{}/{} Files Downloaded", downloadedFiles.size(), downloadFutures.size());
+                        Metrics.globalRegistry.gauge(LOADED_GAUGE_NAME, downloadedFiles.size());
+                        finished = downloadedFiles.size() >= downloadFutures.size();
+
+                        Thread.sleep(5000);
+                    }
+                } catch (Exception e) {
+                    LOG.info("Error during background download of files", e);
+                }
+            }
+        });
     }
 
     private List<FileMetadata> listFilesInDir(String directory) throws DbxException {
@@ -85,35 +94,31 @@ public class DropboxExporter {
         ListFolderResult result;
         try {
             result = dropbox.files().listFolder(directory);
-        }
-        catch(InvalidAccessTokenException e) {
+        } catch (InvalidAccessTokenException e) {
             LOG.info("Access token has expired. Try refreshing and then fetch again...");
             dropbox.refreshAccessToken();
             result = dropbox.files().listFolder(directory);
         }
 
 
-        while(true) {
+        while (true) {
             for (Metadata meta : result.getEntries()) {
                 String path = meta.getPathLower();
 
                 if (meta instanceof FolderMetadata) {
                     subDirs.add(path);
-                }
-
-                else if (meta instanceof FileMetadata) {
+                } else if (meta instanceof FileMetadata) {
                     files.add((FileMetadata) meta);
                 }
             }
 
-            if(!result.getHasMore()) {
+            if (!result.getHasMore()) {
                 break;
             }
 
             try {
                 result = dropbox.files().listFolderContinue(result.getCursor());
-            }
-            catch(InvalidAccessTokenException e) {
+            } catch (InvalidAccessTokenException e) {
                 LOG.info("Access token has expired. Try refreshing and then fetch again...");
                 dropbox.refreshAccessToken();
                 result = dropbox.files().listFolderContinue(result.getCursor());
@@ -121,7 +126,7 @@ public class DropboxExporter {
         }
         LOG.info("Found {} files and {} folders in {}", files.size(), subDirs.size(), directory);
 
-        for(String folder : subDirs) {
+        for (String folder : subDirs) {
             LOG.info("Fetching content information in {}...", folder);
             files.addAll(listFilesInDir(folder));
         }

@@ -47,6 +47,7 @@ public class DownloadTask implements Runnable {
 
     private void load() throws DbxException, IOException {
         Metrics.globalRegistry.timer(DOWNLOAD_TIMER_NAME);
+        FileOutputStream out = null;
         try {
             try (DbxDownloader<FileMetadata> downloader = dropbox.files().download(path)) {
                 File destinationFile = new File(destinationPath);
@@ -61,8 +62,7 @@ public class DownloadTask implements Runnable {
                     LOG.info("{} already seems to be downloaded to {}. Skipping", path, destinationPath);
                     return;
                 }
-
-                FileOutputStream out = new FileOutputStream(destinationFile);
+                out = new FileOutputStream(destinationFile);
 
                 LOG.info("Downloading {} to {}", path, destinationPath);
                 downloader.download(out, new DownloadProgressListener(path, metadata.getSize()));
@@ -72,6 +72,10 @@ public class DownloadTask implements Runnable {
             LOG.info("Got invalid token, refreshing and retrying download...");
             dropbox.refreshAccessToken();
             load();
+        } finally {
+            if (out != null) {
+                out.close();
+            }
         }
     }
 }
