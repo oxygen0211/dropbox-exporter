@@ -2,6 +2,7 @@ package com.ridesmoto.dropboxexporter.processor;
 
 import com.dropbox.core.DbxException;
 import com.dropbox.core.DbxRequestConfig;
+import com.dropbox.core.InvalidAccessTokenException;
 import com.dropbox.core.v2.DbxClientV2;
 import com.dropbox.core.v2.files.FileMetadata;
 import com.dropbox.core.v2.files.FolderMetadata;
@@ -15,7 +16,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
-import java.io.*;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -35,8 +36,8 @@ public class DropboxExporter {
     @Value("${dropbox.destination}")
     private String destDir;
 
-    private DbxClientV2 dropbox;
-    private ExecutorService downloadExecutor;
+    private final DbxClientV2 dropbox;
+    private final ExecutorService downloadExecutor;
 
     public DropboxExporter( @Value("${dropbox.identifier}") String identifier, @Value("${dropbox.accesstoken}") String accesstoken, @Value("${dropbox.download.threads}") int threads) {
         DbxRequestConfig config = DbxRequestConfig.newBuilder(identifier).build();
@@ -46,7 +47,16 @@ public class DropboxExporter {
 
     @EventListener(ApplicationReadyEvent.class)
     public void exportFromConfig() throws DbxException, IOException, InterruptedException, ExecutionException {
-        LOG.info("Exporting directory {} of account {} to {} as specified in application config...", sourceDir, dropbox.users().getCurrentAccount().getName().getDisplayName(), destDir);
+        String username = "anonymous";
+        try {
+            username = dropbox.users().getCurrentAccount().getName().getDisplayName();
+        }
+        catch(InvalidAccessTokenException e) {
+            LOG.info("Access token has expired. Try refreshing and then fetch username again...");
+            dropbox.refreshAccessToken();
+            username = dropbox.users().getCurrentAccount().getName().getDisplayName();
+        }
+        LOG.info("Exporting directory {} of account {} to {} as specified in application config...", sourceDir, username, destDir);
 
         List<FileMetadata> downloadableFiles = listFilesInDir(sourceDir);
 
@@ -72,7 +82,16 @@ public class DropboxExporter {
     private List<FileMetadata> listFilesInDir(String directory) throws DbxException {
         List<FileMetadata> files = new ArrayList<>();
         List<String> subDirs = new ArrayList<>();
-        ListFolderResult result = dropbox.files().listFolder(directory);
+        ListFolderResult result;
+        try {
+            result = dropbox.files().listFolder(directory);
+        }
+        catch(InvalidAccessTokenException e) {
+            LOG.info("Access token has expired. Try refreshing and then fetch again...");
+            dropbox.refreshAccessToken();
+            result = dropbox.files().listFolder(directory);
+        }
+
 
         while(true) {
             for (Metadata meta : result.getEntries()) {
@@ -90,7 +109,15 @@ public class DropboxExporter {
             if(!result.getHasMore()) {
                 break;
             }
-            result = dropbox.files().listFolderContinue(result.getCursor());
+
+            try {
+                result = dropbox.files().listFolderContinue(result.getCursor());
+            }
+            catch(InvalidAccessTokenException e) {
+                LOG.info("Access token has expired. Try refreshing and then fetch again...");
+                dropbox.refreshAccessToken();
+                result = dropbox.files().listFolderContinue(result.getCursor());
+            }
         }
         LOG.info("Found {} files and {} folders in {}", files.size(), subDirs.size(), directory);
 
